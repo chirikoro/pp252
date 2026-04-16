@@ -1,5 +1,5 @@
 use iced::widget::{button, container};
-use iced::{border, color, Color, Font, Theme};
+use iced::{border, color, Color, Theme};
 
 // Pastel color palette
 pub const BG: Color = color!(0xFFF5F0);
@@ -108,7 +108,6 @@ pub fn title_text<'a>(content: impl ToString) -> iced::widget::Text<'a> {
     iced::widget::text(content.to_string())
         .size(28)
         .color(ACCENT)
-        .font(Font::DEFAULT)
 }
 
 pub fn info_text<'a>(content: impl ToString) -> iced::widget::Text<'a> {

@@ -1,7 +1,9 @@
 use iced::mouse;
 use iced::widget::canvas::{self, event, Canvas, Event, Frame, Geometry, Image as CanvasImage, Stroke, Text};
 use iced::widget::image::Handle;
-use iced::{alignment, Color, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+use iced::{alignment, Color, Element, Font, Length, Point, Rectangle, Renderer, Size, Theme};
+
+use crate::JP_FONT_NAME;
 
 use crate::ui::theme;
 
@@ -277,6 +279,7 @@ impl canvas::Program<CanvasMessage> for CropCanvas {
                 position: center,
                 color: theme::TEXT_MUTED,
                 size: 20.0.into(),
+                font: Font::with_name(JP_FONT_NAME),
                 horizontal_alignment: alignment::Horizontal::Center,
                 vertical_alignment: alignment::Vertical::Center,
                 ..Default::default()
