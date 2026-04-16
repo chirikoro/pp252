@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use iced::widget::{button, column, container, horizontal_space, row, text};
-use iced::{Element, Length, Task, Theme};
+use iced::widget::{button, column, container, horizontal_space, row, stack, text};
+use iced::{window, ContentFit, Element, Length, Subscription, Task, Theme};
 
 use crate::crop;
 use crate::ui::canvas::{CanvasMessage, CropCanvas};
@@ -15,6 +15,7 @@ pub enum Message {
     Canvas(CanvasMessage),
     CropAndSave,
     FileSaved(Result<PathBuf, String>),
+    FileHovering(bool),
 }
 
 #[derive(Debug, Clone)]
@@ -37,7 +38,6 @@ pub enum Status {
 pub struct App {
     pub canvas: CropCanvas,
     image: Option<image::DynamicImage>,
-    image_path: Option<PathBuf>,
     image_dimensions: Option<(u32, u32)>,
     status: Status,
 }
@@ -48,7 +48,6 @@ impl App {
             Self {
                 canvas: CropCanvas::new(),
                 image: None,
-                image_path: None,
                 image_dimensions: None,
                 status: Status::Idle,
             },
@@ -62,6 +61,28 @@ impl App {
 
     pub fn theme(&self) -> Theme {
         theme::custom_theme()
+    }
+
+    pub fn subscription(&self) -> Subscription<Message> {
+        iced::event::listen_with(|event, _status, _id| match event {
+            iced::Event::Window(window::Event::FileDropped(path)) => {
+                if path
+                    .extension()
+                    .map_or(false, |ext| ext.eq_ignore_ascii_case("png"))
+                {
+                    Some(Message::FileSelected(Some(path)))
+                } else {
+                    Some(Message::ImageLoaded(Err(
+                        "PNG ファイルのみ対応しています".to_string(),
+                    )))
+                }
+            }
+            iced::Event::Window(window::Event::FileHovered(_)) => Some(Message::FileHovering(true)),
+            iced::Event::Window(window::Event::FilesHoveredLeft) => {
+                Some(Message::FileHovering(false))
+            }
+            _ => None,
+        })
     }
 
     pub fn update(&mut self, message: Message) -> Task<Message> {
@@ -81,8 +102,10 @@ impl App {
             }
 
             Message::FileSelected(path) => {
+                self.canvas.is_file_hovering = false;
                 match path {
                     Some(p) => {
+                        self.status = Status::Loading;
                         let path = p.clone();
                         Task::perform(
                             async move {
@@ -114,10 +137,8 @@ impl App {
                         );
                         self.canvas.set_image(handle, info.width, info.height);
                         self.image_dimensions = Some((info.width, info.height));
-                        self.image_path = Some(info.path.clone());
                         self.status = Status::Loaded;
 
-                        // Load DynamicImage for cropping (synchronous, fast for validated path)
                         if let Ok(reader) = image::ImageReader::open(&info.path) {
                             if let Ok(img) = reader.decode() {
                                 self.image = Some(img);
@@ -185,14 +206,36 @@ impl App {
                 }
                 Task::none()
             }
+
+            Message::FileHovering(hovering) => {
+                self.canvas.is_file_hovering = hovering;
+                Task::none()
+            }
         }
     }
 
     pub fn view(&self) -> Element<'_, Message> {
         let title = theme::title_text("PP252");
 
-        // Canvas area
-        let canvas_area = container(self.canvas.view().map(Message::Canvas))
+        // Canvas area: Stack image widget + canvas overlay for correct z-order
+        let canvas_content: Element<'_, Message> =
+            if let Some(ref handle) = self.canvas.image_handle {
+                let img = iced::widget::image(handle.clone())
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .content_fit(ContentFit::Contain);
+
+                let overlay = self.canvas.overlay_view().map(Message::Canvas);
+
+                stack![img, overlay]
+                    .width(Length::Fill)
+                    .height(Length::Fill)
+                    .into()
+            } else {
+                self.canvas.placeholder_view().map(Message::Canvas)
+            };
+
+        let canvas_area = container(canvas_content)
             .width(Length::Fill)
             .height(Length::Fill)
             .padding(2)
@@ -212,20 +255,17 @@ impl App {
                 ]
                 .spacing(10)
             }
-            None => row![theme::info_text("PNG ファイルを読み込んでください")],
+            None => row![theme::info_text(
+                "PNG ファイルをドラッグ＆ドロップ、またはボタンで読み込み"
+            )],
         };
 
         // Buttons
-        let open_btn = button(
-            text("  PNG を開く  ").size(16),
-        )
-        .style(theme::primary_button)
-        .on_press(Message::OpenFile);
+        let open_btn = button(text("  PNG を開く  ").size(16))
+            .style(theme::primary_button)
+            .on_press(Message::OpenFile);
 
-        let save_btn = button(
-            text("  クロップして保存  ").size(16),
-        )
-        .style(theme::save_button);
+        let save_btn = button(text("  クロップして保存  ").size(16)).style(theme::save_button);
 
         let save_btn = if self.image.is_some() {
             save_btn.on_press(Message::CropAndSave)
@@ -241,12 +281,14 @@ impl App {
         let status = match &self.status {
             Status::Idle => theme::status_text("準備完了", false),
             Status::Loading => theme::status_text("読み込み中...", false),
-            Status::Loaded => theme::status_text("画像を読み込みました。選択枠をドラッグして範囲を調整してください。", false),
-            Status::Saving => theme::status_text("保存中...", false),
-            Status::Saved(path) => theme::status_text(
-                format!("保存しました: {}", path.display()),
+            Status::Loaded => theme::status_text(
+                "画像を読み込みました。選択枠をドラッグして範囲を調整してください。",
                 false,
             ),
+            Status::Saving => theme::status_text("保存中...", false),
+            Status::Saved(path) => {
+                theme::status_text(format!("保存しました: {}", path.display()), false)
+            }
             Status::Error(e) => theme::status_text(e, true),
         };
 
