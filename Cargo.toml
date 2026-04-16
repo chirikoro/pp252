@@ -1,0 +1,10 @@
+[package]
+name = "pp252"
+edition = "2024"
+version = "0.1.0"
+description = "Crop PNG images to 252x252 pixels"
+
+[dependencies]
+iced = { version = "0.13", features = ["image", "canvas"] }
+image = "0.25"
+rfd = "0.15"
