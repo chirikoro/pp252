@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use iced::widget::{button, column, container, horizontal_space, row, stack, text};
-use iced::{window, ContentFit, Element, Length, Subscription, Task, Theme};
+use iced::{window, Element, Length, Subscription, Task, Theme};
 
 use crate::crop;
 use crate::ui::canvas::{CanvasMessage, CropCanvas};
@@ -159,6 +159,15 @@ impl App {
                         self.canvas.selection_x = x;
                         self.canvas.selection_y = y;
                     }
+                    CanvasMessage::ZoomChanged { zoom, pan_x, pan_y } => {
+                        self.canvas.zoom = zoom;
+                        self.canvas.pan_x = pan_x;
+                        self.canvas.pan_y = pan_y;
+                    }
+                    CanvasMessage::Panned { dx, dy } => {
+                        self.canvas.pan_x += dx;
+                        self.canvas.pan_y += dy;
+                    }
                 }
                 Task::none()
             }
@@ -217,17 +226,12 @@ impl App {
     pub fn view(&self) -> Element<'_, Message> {
         let title = theme::title_text("PP252");
 
-        // Canvas area: Stack image widget + canvas overlay for correct z-order
         let canvas_content: Element<'_, Message> =
-            if let Some(ref handle) = self.canvas.image_handle {
-                let img = iced::widget::image(handle.clone())
-                    .width(Length::Fill)
-                    .height(Length::Fill)
-                    .content_fit(ContentFit::Contain);
-
+            if self.canvas.image_handle.is_some() {
+                let image_layer = self.canvas.image_view().map(Message::Canvas);
                 let overlay = self.canvas.overlay_view().map(Message::Canvas);
 
-                stack![img, overlay]
+                stack![image_layer, overlay]
                     .width(Length::Fill)
                     .height(Length::Fill)
                     .into()
@@ -246,10 +250,13 @@ impl App {
             Some((w, h)) => {
                 let sel_x = self.canvas.selection_x as u32;
                 let sel_y = self.canvas.selection_y as u32;
+                let zoom_pct = (self.canvas.zoom * 100.0) as u32;
                 row![
                     theme::info_text(format!("画像サイズ: {w} x {h}")),
                     horizontal_space(),
                     theme::info_text(format!("選択位置: ({sel_x}, {sel_y})")),
+                    horizontal_space(),
+                    theme::info_text(format!("ズーム: {zoom_pct}%")),
                     horizontal_space(),
                     theme::info_text(format!("クロップサイズ: 252 x 252")),
                 ]
